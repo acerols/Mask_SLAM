@@ -32,7 +32,14 @@
 
 #include<opencv2/core/core.hpp>
 
-#include"../../../include/System.h"
+#include "../../../include/System.h"
+#include "../../../include/Converter.h"
+
+#include "geometry_msgs/PoseStamped.h"
+#include "geometry_msgs/Point.h"
+#include "geometry_msgs/Quaternion.h"
+#include "tf/transform_broadcaster.h"
+#include <vector>
 
 using namespace std;
 
@@ -46,6 +53,12 @@ public:
     ORB_SLAM2::System* mpSLAM;
     bool do_rectify;
     cv::Mat M1l,M2l,M1r,M2r;
+
+    bool pub_tf, pub_pose;
+    ros::Publisher *orb_pub;
+    
+    void SetPub(ros::Publisher *pub);
+
 };
 
 int main(int argc, char **argv)
@@ -109,6 +122,10 @@ int main(int argc, char **argv)
 
     ros::NodeHandle nh;
 
+    /* add to TF */
+    ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("orb_pose", 100);
+    igb.SetPub(&pose_pub);
+
     message_filters::Subscriber<sensor_msgs::Image> left_sub(nh, "/camera/left/image_raw", 1);
     message_filters::Subscriber<sensor_msgs::Image> right_sub(nh, "camera/right/image_raw", 1);
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> sync_pol;
@@ -155,18 +172,60 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,const se
         return;
     }
 
+    cv::Mat T_, R_, t_;
+
     if(do_rectify)
     {
         cv::Mat imLeft, imRight;
         cv::remap(cv_ptrLeft->image,imLeft,M1l,M2l,cv::INTER_LINEAR);
         cv::remap(cv_ptrRight->image,imRight,M1r,M2r,cv::INTER_LINEAR);
-        mpSLAM->TrackStereo(imLeft,imRight,cv_ptrLeft->header.stamp.toSec());
+        T_ = mpSLAM->TrackStereo(imLeft,imRight,cv_ptrLeft->header.stamp.toSec());
     }
     else
     {
-        mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
+        T_ = mpSLAM->TrackStereo(cv_ptrLeft->image,cv_ptrRight->image,cv_ptrLeft->header.stamp.toSec());
     }
 
+    if(T_.empty())
+    {
+        return ;
+    }
+
+    tf::Transform transform;
+    if(pub_tf || pub_pose)
+    {
+        R_ = T_.rowRange(0,3).colRange(0,3).t();
+        t_ = -R_ * T_.rowRange(0,3).col(3);
+        vector<float> q = ORB_SLAM2::Converter::toQuaternion(R_);
+        float scale_factor = 1.0;
+        
+        transform.setOrigin(tf::Vector3(t_.at<float>(0, 0)*scale_factor, 
+                                    t_.at<float>(0, 1)*scale_factor, 
+                                    t_.at<float>(0, 2)*scale_factor));
+        tf::Quaternion tf_quaternion(q[0], q[1], q[2], q[3]);
+        transform.setRotation(tf_quaternion);
+    }
+
+    if(pub_tf)
+    {
+        static tf::TransformBroadcaster br_;
+        br_.sendTransform(tf::StampedTransform(transform, ros::Time(cv_ptrLeft->header.stamp.toSec()), "world", "ORB_SLAM2_STEREO"));
+    }
+
+    if(pub_pose)
+    {
+        geometry_msgs::PoseStamped pose;
+        pose.header.stamp = cv_ptrLeft->header.stamp;
+        pose.header.frame_id = "ORB_SLAM2_STREO";
+        tf::poseTFToMsg(transform, pose.pose);
+        orb_pub->publish(pose);
+    }
+
+}
+
+void ImageGrabber::SetPub(ros::Publisher* pub)
+{
+    orb_pub = pub;
 }
 
 
