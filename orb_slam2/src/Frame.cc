@@ -22,6 +22,7 @@
 #include "Converter.h"
 #include "ORBmatcher.h"
 #include <thread>
+#include <algorithm>
 
 namespace ORB_SLAM2
 {
@@ -92,6 +93,71 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));    
     mvbOutlier = vector<bool>(N,false);
 
+
+    // This is done only for the first Frame (or after a change in the calibration)
+    if(mbInitialComputations)
+    {
+        ComputeImageBounds(imLeft);
+
+        mfGridElementWidthInv=static_cast<float>(FRAME_GRID_COLS)/(mnMaxX-mnMinX);
+        mfGridElementHeightInv=static_cast<float>(FRAME_GRID_ROWS)/(mnMaxY-mnMinY);
+
+        fx = K.at<float>(0,0);
+        fy = K.at<float>(1,1);
+        cx = K.at<float>(0,2);
+        cy = K.at<float>(1,2);
+        invfx = 1.0f/fx;
+        invfy = 1.0f/fy;
+
+        mbInitialComputations=false;
+    }
+
+    mb = mbf/fx;
+
+    AssignFeaturesToGrid();
+}
+
+Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight,
+             const cv::Mat &imMaskLeft, const cv::Mat &imMaskRight,
+             const double &timeStamp, ORBextractor* extractorLeft, ORBextractor* extractorRight, ORBVocabulary* voc, cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth)
+    :mpORBvocabulary(voc),mpORBextractorLeft(extractorLeft),mpORBextractorRight(extractorRight), mTimeStamp(timeStamp), mK(K.clone()),mDistCoef(distCoef.clone()), mbf(bf), mThDepth(thDepth),
+     mpReferenceKF(static_cast<KeyFrame*>(NULL))
+{
+    // Frame ID
+    mnId=nNextId++;
+
+    // Scale Level Info
+    mnScaleLevels = mpORBextractorLeft->GetLevels();
+    mfScaleFactor = mpORBextractorLeft->GetScaleFactor();
+    mfLogScaleFactor = log(mfScaleFactor);
+    mvScaleFactors = mpORBextractorLeft->GetScaleFactors();
+    mvInvScaleFactors = mpORBextractorLeft->GetInverseScaleFactors();
+    mvLevelSigma2 = mpORBextractorLeft->GetScaleSigmaSquares();
+    mvInvLevelSigma2 = mpORBextractorLeft->GetInverseScaleSigmaSquares();
+
+
+    // ORB extraction
+    thread threadLeft(&Frame::ExtractORBMask,this,0,imLeft, imMaskLeft);
+    thread threadRight(&Frame::ExtractORBMask,this,1,imRight, imMaskRight);
+    threadLeft.join();
+    threadRight.join();
+
+    N = mvKeys.size();
+
+    if(mvKeys.empty())
+        return;
+
+    //thread threadLeftKeypointEliminate(&Frame::ORBEliminate, this, imMaskLeft);
+    //threadLeftKeypointEliminate.join();
+
+    ORBEliminate(imMaskLeft);
+
+    UndistortKeyPoints();
+
+    ComputeStereoMatches();
+
+    mvpMapPoints = vector<MapPoint*>(N,static_cast<MapPoint*>(NULL));    
+    mvbOutlier = vector<bool>(N,false);
 
     // This is done only for the first Frame (or after a change in the calibration)
     if(mbInitialComputations)
@@ -250,6 +316,44 @@ void Frame::ExtractORB(int flag, const cv::Mat &im)
         (*mpORBextractorLeft)(im,cv::Mat(),mvKeys,mDescriptors);
     else
         (*mpORBextractorRight)(im,cv::Mat(),mvKeysRight,mDescriptorsRight);
+}
+
+void Frame::ExtractORBMask(int flag, const cv::Mat &im, const cv::Mat &mask)
+{
+    if(flag==0){
+        (*mpORBextractorLeft)(im,mask,mvKeys,mDescriptors);
+    }
+    else{
+        (*mpORBextractorRight)(im,mask,mvKeysRight,mDescriptorsRight);
+    }
+}
+
+void Frame::ORBEliminate(const cv::Mat &mask)
+{
+    cout << "Eliminator" << endl;
+
+    vector<cv::KeyPoint> tmp(mvKeys);
+
+    
+    for(vector<cv::KeyPoint>::iterator i = mvKeys.begin(); i != mvKeys.end(); ++i){
+        int x, y;
+        x = (*i).pt.x;
+        y = (*i).pt.y;
+
+        auto *pixel = mask.ptr(x, y);
+        if(*pixel < 250){
+            tmp.push_back(*i);
+        }
+    }
+    
+    mvKeys.clear();
+    //mvKeys.reserve(tmp.size());
+    //mvKeys.insert(mvKeys.end(), tmp.begin(), tmp.end());
+    for(size_t key_index = 0; key_index < min((int)tmp.size(), 2); ++key_index){
+        mvKeys.push_back(tmp[key_index]);
+    }
+
+
 }
 
 void Frame::SetPose(cv::Mat Tcw)

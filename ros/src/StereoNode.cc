@@ -55,10 +55,14 @@ void StereoNode::init()
     shared_from_this(), "/image_left/image_color_rect");
   right_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
     shared_from_this(), "/image_right/image_color_rect");
+  left_mask_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+    shared_from_this(), "/image_left/image_mask_rect");
+  right_mask_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(
+    shared_from_this(), "/image_right/image_mask_rect");
 
-  sync_ = new message_filters::Synchronizer<sync_pol>(sync_pol(10), *left_sub_, *right_sub_);
+  sync_ = new message_filters::Synchronizer<sync_pol>(sync_pol(10), *left_sub_, *right_sub_, *left_mask_sub_, *right_mask_sub_);
   sync_->registerCallback(std::bind(&StereoNode::ImageCallback, this,
-    std::placeholders::_1, std::placeholders::_2));
+    std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 }
 
 StereoNode::~StereoNode()
@@ -68,7 +72,9 @@ StereoNode::~StereoNode()
 
 void StereoNode::ImageCallback(
   const sensor_msgs::msg::Image::ConstSharedPtr & msgLeft,
-  const sensor_msgs::msg::Image::ConstSharedPtr & msgRight)
+  const sensor_msgs::msg::Image::ConstSharedPtr & msgRight,
+  const sensor_msgs::msg::Image::ConstSharedPtr & msgMaskLeft,
+  const sensor_msgs::msg::Image::ConstSharedPtr & msgMaskRight)
 {
   if (!isInitialized()) {
     RCLCPP_WARN(get_logger(), "Camera info not received, node has not been initialized!");
@@ -91,10 +97,27 @@ void StereoNode::ImageCallback(
     return;
   }
 
+  cv_bridge::CvImageConstPtr cv_ptrMaskLeft;
+  try {
+    cv_ptrMaskLeft = cv_bridge::toCvShare(msgMaskLeft);
+  } catch (cv_bridge::Exception & e) {
+    RCLCPP_ERROR(get_logger(), "cv_bridge exception: %s", e.what());
+    return;
+  }
+
+  cv_bridge::CvImageConstPtr cv_ptrMaskRight;
+  try {
+    cv_ptrMaskRight = cv_bridge::toCvShare(msgMaskRight);
+  } catch (cv_bridge::Exception & e) {
+    RCLCPP_ERROR(get_logger(), "cv_bridge exception: %s", e.what());
+    return;
+  }
+
   current_frame_time_ = msgLeft->header.stamp;
 
   rclcpp::Time msg_time = cv_ptrLeft->header.stamp;
-  orb_slam_->TrackStereo(cv_ptrLeft->image, cv_ptrRight->image, msg_time.seconds());
-
+  //orb_slam_->TrackStereo(cv_ptrLeft->image, cv_ptrRight->image, msg_time.seconds());
+  orb_slam_->TrackStereoWithMask(cv_ptrLeft->image, cv_ptrRight->image, 
+    cv_ptrMaskLeft->image, cv_ptrMaskRight->image, msg_time.seconds());
   Update();
 }

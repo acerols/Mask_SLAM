@@ -67,6 +67,9 @@ public:
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
     // Returns the camera pose (empty if tracking fails).
     void TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp);
+    void TrackStereoWithMask(const cv::Mat &imLeft, const cv::Mat &imRight, 
+                     const cv::Mat &imMaskLeft, const cv::Mat &imMaskRight, 
+                     const double &timestamp);
 
     // Process the given rgbd frame. Depthmap must be registered to the RGB frame.
     // Input image: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.

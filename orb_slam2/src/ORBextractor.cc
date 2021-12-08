@@ -1040,13 +1040,14 @@ static void computeDescriptors(const Mat& image, vector<KeyPoint>& keypoints, Ma
         computeOrbDescriptor(keypoints[i], image, &pattern[0], descriptors.ptr((int)i));
 }
 
-void ORBextractor::operator()( InputArray _image, InputArray /*_mask*/, vector<KeyPoint>& _keypoints,
+void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPoint>& _keypoints,
                       OutputArray _descriptors)
 { 
     if(_image.empty())
         return;
 
     Mat image = _image.getMat();
+    Mat mask = _mask.getMat();
     assert(image.type() == CV_8UC1 );
 
     // Pre-compute the scale pyramid
@@ -1102,6 +1103,22 @@ void ORBextractor::operator()( InputArray _image, InputArray /*_mask*/, vector<K
         // And add the keypoints to the output
         _keypoints.insert(_keypoints.end(), keypoints.begin(), keypoints.end());
     }
+
+    /*
+    vector<size_t> indexs;
+
+    for(auto i = _keypoints.begin(); i != _keypoints.end(); ++i){
+        int x, y;
+        x = (int)(*i).pt.x;
+        y = (int)(*i).pt.y;
+        
+        if(mask.at<unsigned char>(x, y) > 254){
+            size_t index = distance(_keypoints.begin(), i);
+            indexs.push_back(index);
+        }
+    }
+    sort(indexs.begin(), indexs.end(), greater<size_t>());
+    */
 }
 
 void ORBextractor::ComputePyramid(cv::Mat image)

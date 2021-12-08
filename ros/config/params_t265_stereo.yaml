@@ -30,3 +30,4 @@ orb_slam2_stereo:
     ThDepth: 40.0
     depth_map_factor: 1.0
     camera_baseline: 18.2198
+    # baseline 64mm 

@@ -59,14 +59,18 @@ public:
 
   void ImageCallback(
     const sensor_msgs::msg::Image::ConstSharedPtr & msgLeft,
-    const sensor_msgs::msg::Image::ConstSharedPtr & msgRight);
+    const sensor_msgs::msg::Image::ConstSharedPtr & msgRight,
+    const sensor_msgs::msg::Image::ConstSharedPtr & msgMaskLeft,
+    const sensor_msgs::msg::Image::ConstSharedPtr & msgMaskRight);
 
 private:
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image,
-      sensor_msgs::msg::Image> sync_pol;
+      sensor_msgs::msg::Image, sensor_msgs::msg::Image, sensor_msgs::msg::Image> sync_pol;
 
   std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> left_sub_;
   std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> right_sub_;
+  std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> left_mask_sub_;
+  std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> right_mask_sub_;
   message_filters::Synchronizer<sync_pol> * sync_;
 
   int resize_horizontal;
