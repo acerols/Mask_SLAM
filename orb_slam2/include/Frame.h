@@ -63,7 +63,6 @@ public:
     // Extract ORB on the image. 0 for left image and 1 for right image.
     void ExtractORB(int flag, const cv::Mat &im);
     void ExtractORBMask(int flag, const cv::Mat &im, const cv::Mat &mask);
-    void ORBEliminate(const cv::Mat &mask);
 
     // Compute Bag of Words representation.
     void ComputeBoW();

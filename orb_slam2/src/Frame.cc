@@ -150,8 +150,6 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight,
     //thread threadLeftKeypointEliminate(&Frame::ORBEliminate, this, imMaskLeft);
     //threadLeftKeypointEliminate.join();
 
-    ORBEliminate(imMaskLeft);
-
     UndistortKeyPoints();
 
     ComputeStereoMatches();
@@ -326,34 +324,6 @@ void Frame::ExtractORBMask(int flag, const cv::Mat &im, const cv::Mat &mask)
     else{
         (*mpORBextractorRight)(im,mask,mvKeysRight,mDescriptorsRight);
     }
-}
-
-void Frame::ORBEliminate(const cv::Mat &mask)
-{
-    cout << "Eliminator" << endl;
-
-    vector<cv::KeyPoint> tmp(mvKeys);
-
-    
-    for(vector<cv::KeyPoint>::iterator i = mvKeys.begin(); i != mvKeys.end(); ++i){
-        int x, y;
-        x = (*i).pt.x;
-        y = (*i).pt.y;
-
-        auto *pixel = mask.ptr(x, y);
-        if(*pixel < 250){
-            tmp.push_back(*i);
-        }
-    }
-    
-    mvKeys.clear();
-    //mvKeys.reserve(tmp.size());
-    //mvKeys.insert(mvKeys.end(), tmp.begin(), tmp.end());
-    for(size_t key_index = 0; key_index < min((int)tmp.size(), 2); ++key_index){
-        mvKeys.push_back(tmp[key_index]);
-    }
-
-
 }
 
 void Frame::SetPose(cv::Mat Tcw)
